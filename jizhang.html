@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>记账</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--theme:#4f46e5;--theme-light:#e0e7ff;--bg:#f5f9ff;--card:#fff;--text:#333;--red:#dc2626;--green:#16a34a}
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,Arial,Helvetica,sans-serif}
+body{background:var(--bg);color:var(--text);padding-bottom:40px}
+header{background:var(--theme);color:#fff;padding:12px;text-align:center;font-size:20px;border-radius:0 0 12px 12px}
+#box{padding:12px}
+button{border:none;border-radius:6px;cursor:pointer;font-size:14px;padding:8px 14px;transition:.2s}
+.btn-prim{background:var(--theme);color:#fff}
+.btn-prim:hover{background:#3730a3}.btn-sec{background:var(--theme-light);color:var(--text)}
+#totalBar{display:flex;gap:12px;margin-bottom:12px}
+#totalBar>div{flex:1;background:var(--card);padding:12px;border-radius:8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+#totalBar .amount{font-size:18px;font-weight:700;margin-top:4px}
+.income{color:var(--green)}.expense{color:var(--red)}
+.card{background:var(--card);padding:12px;border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.row{display:flex;gap:8px;align-items:center;margin:6px 0}
+.row input,.row select{flex:1;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:15px}
+.list-item{background:var(--card);margin:6px 0;padding:10px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer}
+.thumb{width:52px;height:52px;object-fit:cover;border-radius:6px}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:999}
+.big-img{max-width:90vw;max-height:90vh;border-radius:8px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<header>记账</header>
+
+<div id="box">
+  <!-- 1. 收入/支出 同一行 -->
+  <div id="totalBar">
+    <div>本月收入<span class="amount income" id="tin">0.00</span></div>
+    <div>本月支出<span class="amount expense" id="tout">0.00</span></div>
+  </div>
+
+  <!-- 2. 金额+日期 同一行 -->
+  <div class="card">
+  <div class="row">
+    <label><input type="radio" name="io" value="out" checked> 支出</label>
+    <label><input type="radio" name="io" value="in"> 收入</label>
+  </div>
+    <div class="row">
+  <input id="money" type="number" placeholder="金额（必填）" step="0.01">
+  <input id="dateIn" type="date">
+</div>
+
+    <!-- 3. 类型+备注 同一行 -->
+    <div class="row">
+      <select id="kind"><option>买菜</option><option>水电费</option><option>电视费</option><option>物业管理费</option><option>老人日用品</option><option>医药用品</option><option>其他</option></select>
+      <input id="note" placeholder="备注（可空）">
+    </div>
+
+    <!-- 4. 图片+保存 同一行 -->
+    <div class="row">
+  <input type="file" accept="image/*" id="pic" name="pic" style="flex:1;min-width:0">
+  <button class="btn-prim" onclick="save()" style="width:100px;white-space:nowrap">保存这笔账</button>
+</div>
+  </div>
+
+  <!-- 月份选择+打包 -->
+<div class="card" style="margin-bottom:12px;text-align:center">
+  <div class="row" style="margin:0;justify-content:center;gap:8px;flex-wrap:wrap">
+    
+    <input type="month" id="listMonth" style="max-width:120px">
+    <button class="btn-sec" onclick="packMonth()">打包</button>
+    <button class="btn-sec" onclick="exportAll()">导出</button>
+    <button class="btn-sec" onclick="importAll()">导入</button>
+  </div>
+</div>
+
+  <!-- 记录列表 -->
+  <h3 style="margin:8px 0">当月记录</h3>
+  <div id="lst"></div>
+</div>
+
+<!-- 大图查看 -->
+<div id="bigMask" class="mask hide" onclick="clsBig()"><img id="bigImg" class="big-img"></div>
+
+<script>
+/* ========== 数据层 ========== */
+const DB={t:[],i:0};
+const load=()=>{try{DB.t=JSON.parse(localStorage.hk||'[]');DB.i=+localStorage.hk_i||0}catch(e){}};
+const saveLs=()=>{localStorage.hk=JSON.stringify(DB.t);localStorage.hk_i=DB.i};
+
+/* ========== 渲染 ========== */
+function flush(){
+  const ym=$('#listMonth').value;
+  const mo=DB.t.filter(x=>x.d.slice(0,7)===ym)
+               .sort((a,b)=>b.d.localeCompare(a.d)||(b.time||'').localeCompare(a.time||''));
+  const inc=mo.filter(x=>x.io==='in').reduce((a,b)=>a+b.m,0);
+  const outc=mo.filter(x=>x.io==='out').reduce((a,b)=>a+b.m,0);
+  $('#tin').textContent=inc.toFixed(2);
+  $('#tout').textContent=outc.toFixed(2);
+  $('#lst').innerHTML=mo.map(x=>`
+    <div class="list-item" onclick="if(confirm('确定删除这条？')){delRow('${x.id}')}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div>
+          <div>${x.d} ${x.io==='in'?'<span class="income">收入</span>':'<span class="expense">支出</span>'} <b>${x.m.toFixed(2)}</b></div>
+          <div>${x.k} ${x.b?`（${x.b}）`:''}</div>
+        </div>
+        <div style="margin-left:auto">${x.img?`<img src="${x.img}" class="thumb" onclick="event.stopPropagation();viewBig('${x.id}')">`:''}</div>
+      </div>
+    </div>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  load(); DB.t.forEach(x=>{if(!x.time)x.time='00:00'});
+  $('#listMonth').value=new Date().toISOString().slice(0,7);
+  $('#dateIn').value=new Date().toISOString().slice(0,10);
+  $('#listMonth').addEventListener('change',flush);
+  flush();
+});
+
+/* ========== 记账 ========== */
+let curEdit=null;
+function save(){
+  const m=parseFloat($('#money').value);
+  if(!m||m<=0)return alert('请输入金额');
+  const io=document.querySelector('[name=io]:checked').value;
+  const pic=$('#pic').files[0];
+  const rec={
+    io,m,
+    k:$('#kind').value,
+    b:$('#note').value.trim(),
+    d: $('#dateIn')?.value || new Date().toISOString().slice(0,10),
+    time:new Date().toTimeString().slice(0,5),
+    id:++DB.i,img:null
+  };
+  if(pic){
+    const r=new FileReader();
+    r.onload=e=>{
+      const img=new Image(); img.onload=()=>{
+        const c=document.createElement('canvas'),w=800;
+        c.width=w; c.height=w*img.height/img.width;
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+        rec.img=c.toDataURL('image/jpeg',.7);
+        pushRec(rec);
+      }; img.src=e.target.result;
+    }; r.readAsDataURL(pic);
+  }else pushRec(rec);
+}
+function pushRec(rec){DB.t.push(rec);saveLs();flush();$('#money').value=$('#note').value=$('#pic').value='';curEdit=null;alert('已保存');}
+/* 一键导出全部数据（含图片） */
+function exportAll(){
+  const allData={
+    version:1,
+    exportDate:new Date().toISOString(),
+    transactions:DB.t,               // 全部记录（含图片 base64）
+    categories:{income:['工资','奖金','投资收益','兼职','其他收入'],
+                expense:['买菜','水电费','电视费','物业管理费','老人日用品','医药用品','其他']}
+  };
+  const blob=new Blob([JSON.stringify(allData,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='护工记账全备份_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+
+/* 一键导入全部数据（自动去重） */
+function importAll(){
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='.json';
+  input.onchange=e=>{
+    const file=e.target.files[0]; if(!file)return;
+    const r=new FileReader();
+    r.onload=evt=>{
+      try{
+        const data=JSON.parse(evt.target.result);
+        if(!data.transactions||!Array.isArray(data.transactions))throw'格式错误';
+        const existIds=new Set(DB.t.map(x=>x.id));
+        let cnt=0;
+        data.transactions.forEach(x=>{
+          if(!existIds.has(x.id)){   // 按 id 去重
+            DB.t.push(x); cnt++;
+          }
+        });
+        saveLs(); flush();
+        alert(`导入完成！新增 ${cnt} 条记录`);
+      }catch(err){ alert('导入失败：'+err); }
+    };
+    r.readAsText(file);
+  };
+  input.click();
+}
+function delRow(id){
+  if(!confirm('确定删除？'))return;
+  DB.t=DB.t.filter(x=>x.id!==+id); saveLs(); flush();
+}
+
+function viewBig(id){
+  const x=DB.t.find(t=>t.id==id); if(!x||!x.img)return;
+  $('#bigImg').src=x.img; $('#bigMask').classList.remove('hide');
+}
+function clsBig(){$('#bigMask').classList.add('hide');}
+
+/* ========== 打包 ========== */
+function packMonth(){
+  const ym=$('#listMonth').value;
+  if(!ym)return alert('请选择月份');
+  const mo=DB.t.filter(x=>x.d.slice(0,7)===ym);
+  if(!mo.length)return alert(`${ym} 无记录`);
+  let html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${ym}收支表</title>
+<style>
+body{font-size:10px;margin:3px;font-family:system-ui,Arial,Helvetica,sans-serif}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1px solid #ccc;padding:2px;word-break:break-all;text-align:left}
+th{background:#f2f2f2}
+a{color:var(--theme);text-decoration:none}
+</style>
+</head>
+<body>
+<h2>${ym} 收支明细</h2>
+<table>
+  <thead><tr>
+    <th style="width:22%">日期</th>
+    <th style="width:8%">收支</th>
+    <th style="width:19%">金额</th>
+    <th style="width:21%">类别</th>
+    <th style="width:22%">备注</th>
+    <th style="width:8%">凭证</th>
+  </tr></thead><tbody>`;
+  let inc=0,out=0;
+  mo.forEach((x,i)=>{
+    if(x.io==='in')inc+=x.m; else out+=x.m;
+    const imgCell=x.img?`<a href="images/${x.d}_${i}.jpg" target="_blank">查看</a>`:'';
+    html+=`<tr><td>${x.d}</td><td>${x.io==='in'?'收入':'支出'}</td><td>${x.m.toFixed(2)}</td><td>${x.k}</td><td>${x.b||''}</td><td>${imgCell}</td></tr>`;
+  });
+  html+=`</tbody></table><p>本月收入：<b>${inc.toFixed(2)}</b> 支出：<b>${out.toFixed(2)}</b></p>`;
+  const zip=new JSZip();
+  zip.file(`${ym}收支表.html`,html);
+  const imgF=zip.folder('images');
+  mo.forEach((x,i)=>{if(x.img)imgF.file(`${x.d}_${i}.jpg`,x.img.split(',')[1],{base64:true})});
+  zip.generateAsync({type:'blob'}).then(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`${ym}账.zip`;a.click();});
+}
+const $=s=>document.querySelector(s);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</body>
+</html>
