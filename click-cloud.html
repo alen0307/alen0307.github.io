@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>百年点击统计 - 云同步版</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzY2N2VlYSIvPgogIDxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjMwIiBmaWxsPSIjNzY0YmEyIiBvcGFjaXR5PSIwLjciLz4KPC9zdmc+');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+            justify-content: flex-start;
+        }
+        .main-button {
+            width: 90vw;
+            flex: 1 1 auto;
+            min-height: 300px;
+            margin-bottom: 30px;
+            background: linear-gradient(145deg, #ff6b6b, #ee5a24);
+            border: none;
+            border-radius: 20px;
+            color: white;
+            font-size: 2rem;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .main-button.click-green {
+            background: linear-gradient(145deg, #2ecc71, #27ae60) !important;
+            animation: colorSwitch 0.3s ease;
+        }
+        @keyframes colorSwitch {
+            0% { background: linear-gradient(145deg, #ff6b6b, #ee5a24); }
+            50% { background: linear-gradient(145deg, #2ecc71, #27ae60); }
+            100% { background: linear-gradient(145deg, #ff6b6b, #ee5a24); }
+        }
+        .main-button:hover { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(0,0,0,0.4); }
+        .main-button:active { transform: translateY(0); box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
+        .main-button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        .main-button:active, .main-button.touch-active { transform: scale(0.98); box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
+        .click-count { font-size: 8rem; margin: 10px 0; }
+        .click-label { font-size: 2rem; opacity: 0.9; }
+        .timer { font-size: 2rem; font-weight: bold; color: #ffffff; opacity: 0.8; margin: 5px 0; font-family: 'Courier New', monospace; }
+        .ripple { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 50%, transparent 70%); transform: scale(0); animation: ripple 0.8s ease-out; pointer-events: none; width: 100px; height: 100px; margin-left: -50px; margin-top: -50px; }
+        @keyframes ripple { 0% { transform: scale(0); opacity: 1; } 50% { transform: scale(2); opacity: 0.6; } 100% { transform: scale(4); opacity: 0; } }
+        .water-ripple { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); transform: scale(0); animation: water-ripple 1s ease-out; pointer-events: none; width: 80px; height: 80px; margin-left: -40px; margin-top: -40px; }
+        @keyframes water-ripple { 0% { transform: scale(0); opacity: 1; border-width: 3px; } 100% { transform: scale(6); opacity: 0; border-width: 1px; } }
+        .control-buttons { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; justify-content: center; }
+        .control-button { padding: 15px 25px; background: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .control-button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+        .control-button.primary { background: #4ecdc4; color: white; }
+        .control-button.secondary { background: #95e1d3; color: #333; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; }
+        .modal-content { background: white; margin: 20px auto; padding: 30px; border-radius: 15px; max-width: 95%; width: 600px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 1.5rem; font-weight: bold; color: #333; }
+        .close-button { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; padding: 5px; }
+        .chart-container { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 10px; }
+        .chart-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 15px; color: #333; text-align: center; }
+        .chart-wrapper { position: relative; height: 250px; }
+        .data-controls { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .data-button { flex: 1; padding: 12px 20px; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; min-width: 100px; }
+        .data-button.import { background: #3498db; color: white; }
+        .data-button.export { background: #2ecc71; color: white; }
+        .data-button.clear { background: #e74c3c; color: white; }
+        .data-button:hover { opacity: 0.9; transform: translateY(-1px); }
+        .file-input { display: none; }
+        .stats-summary { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .stat-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e9ecef; }
+        .stat-item:last-child { border-bottom: none; }
+        .stat-label { font-weight: 600; color: #666; }
+        .stat-value { font-weight: bold; color: #333; }
+        .sync-status { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #666; margin-bottom: 15px; padding: 8px 15px; background: rgba(255,255,255,0.8); border-radius: 20px; }
+        .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; }
+        .sync-dot.synced { background: #2ecc71; }
+        .sync-dot.syncing { background: #f39c12; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .login-modal { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); z-index: 2000; align-items: center; justify-content: center; }
+        .login-box { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 90%; max-width: 400px; }
+        .login-title { font-size: 1.8rem; font-weight: bold; text-align: center; margin-bottom: 30px; color: #333; }
+        .login-input { width: 100%; padding: 15px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1rem; margin-bottom: 15px; transition: border-color 0.3s; }
+        .login-input:focus { outline: none; border-color: #667eea; }
+        .login-button { width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: transform 0.3s; }
+        .login-button:hover { transform: translateY(-2px); }
+        .login-hint { text-align: center; margin-top: 15px; font-size: 0.85rem; color: #999; }
+        @media (max-width: 768px) {
+            .main-button { width: 95vw; height: 45vh; min-height: 250px; }
+            .click-count { font-size: 5rem; }
+            .modal-content { margin: 10px; padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sync-status" id="syncStatus">
+        <div class="sync-dot" id="syncDot"></div>
+        <span id="syncText">未连接</span>
+    </div>
+
+    <button class="main-button" id="mainButton">
+        <div class="click-label">今日点击</div>
+        <div class="timer" id="timer">00:00:00</div>
+        <div class="click-count" id="todayCount">0</div>
+        <div class="click-label">次</div>
+    </button>
+
+    <div class="control-buttons">
+        <button class="control-button primary" id="analyzeButton">分析</button>
+        <button class="control-button secondary" id="syncButton">同步</button>
+        <button class="control-button secondary" id="logoutButton">切换房间</button>
+    </div>
+
+    <div class="modal" id="analyzeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">点击统计分析</h2>
+                <button class="close-button" id="closeAnalyze">&times;</button>
+            </div>
+            <div class="stats-summary">
+                <div class="stat-item"><span class="stat-label">总点击次数</span><span class="stat-value" id="totalClicks">0</span></div>
+                <div class="stat-item"><span class="stat-label">平均每日点击</span><span class="stat-value" id="avgDaily">0</span></div>
+                <div class="stat-item"><span class="stat-label">最高单日点击</span><span class="stat-value" id="maxDaily">0</span></div>
+                <div class="stat-item"><span class="stat-label">记录天数</span><span class="stat-value" id="recordDays">0</span></div>
+                <div class="stat-item"><span class="stat-label">数据大小</span><span class="stat-value" id="dataSize">0 KB</span></div>
+                <div class="stat-item"><span class="stat-label">当前房间</span><span class="stat-value" id="currentRoom">-</span></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">最近24小时点击统计（北京时间）</div>
+                <div class="chart-wrapper"><canvas id="hourlyChart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">最近7天点击统计（北京时间）</div>
+                <div class="chart-wrapper"><canvas id="dailyChart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">最近7周点击统计（北京时间）</div>
+                <div class="chart-wrapper"><canvas id="weeklyChart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">最近7月点击统计（北京时间）</div>
+                <div class="chart-wrapper"><canvas id="monthlyChart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">最近100年点击统计（北京时间）</div>
+                <div class="chart-wrapper"><canvas id="yearlyChart"></canvas></div>
+            </div>
+            <div class="data-controls">
+                <button class="data-button export" id="modalExportButton">导出数据</button>
+                <button class="data-button clear" id="clearDataButton">清空数据</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="login-modal" id="loginModal">
+        <div class="login-box">
+            <h2 class="login-title">🏠 进入房间</h2>
+            <input type="text" class="login-input" id="roomInput" placeholder="房间号（如: myroom）">
+            <input type="password" class="login-input" id="passwordInput" placeholder="密码（如: 123456）">
+            <button class="login-button" id="loginButton">进入</button>
+            <p class="login-hint">房间号+密码相同的人将共享同一组数据</p>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 配置区域 ====================
+        // 请替换为你自己的 JSONBin.io API Key
+        // 获取地址: https://jsonbin.io/app#/api-keys
+        const API_KEY = '$2a$10$67/m8YOSQoNzsxuS/dPvLOrD8J2UIkDLTJ5i5wdrNp/DzjfGUhdsm';
+        const API_BASE = 'https://api.jsonbin.io/v3';
+        // =================================================
+
+        class CloudClickTracker {
+            constructor() {
+                this.roomId = localStorage.getItem('clickRoomId');
+                this.password = localStorage.getItem('clickPassword');
+                this.binId = localStorage.getItem('clickBinId');
+                this.data = this.loadLocalData();
+                this.charts = {};
+                this.startTime = Date.now();
+                this.syncInterval = null;
+                
+                if (this.roomId && this.password) {
+                    this.init();
+                }
+            }
+
+            init() {
+                this.bindEvents();
+                this.updateTodayCount();
+                this.startNewDayCheck();
+                this.startTimer();
+                this.connectToServer();
+                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('currentRoom').textContent = this.roomId;
+            }
+
+            loadLocalData() {
+                const saved = localStorage.getItem('clickTrackerData');
+                if (saved) return JSON.parse(saved);
+                
+                const now = new Date();
+                return {
+                    clicks: {},
+                    startDate: now.toISOString(),
+                    lastDate: this.getDateString(now)
+                };
+            }
+
+            saveData() {
+                localStorage.setItem('clickTrackerData', JSON.stringify(this.data));
+            }
+
+            getBeijingTime(date = new Date()) {
+                const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+                return new Date(utc + (8 * 3600000));
+            }
+
+            getDateString(date = new Date()) {
+                return this.getBeijingTime(date).toISOString().split('T')[0];
+            }
+
+            getHourString(date = new Date()) {
+                return this.getBeijingTime(date).toISOString().slice(0, 13);
+            }
+
+            getWeekString(date = new Date()) {
+                const bjTime = this.getBeijingTime(date);
+                const week = this.getWeekNumber(bjTime);
+                return `${bjTime.getFullYear()}-W${week.toString().padStart(2, '0')}`;
+            }
+
+            getMonthString(date = new Date()) {
+                return this.getBeijingTime(date).toISOString().slice(0, 7);
+            }
+
+            getYearString(date = new Date()) {
+                return this.getBeijingTime(date).getFullYear().toString();
+            }
+
+            getWeekNumber(date) {
+                const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                const dayNum = d.getUTCDay() || 7;
+                d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+                const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            }
+
+            // ==================== 服务器同步 ====================
+            async connectToServer() {
+                if (!this.roomId || !this.password) return;
+                
+                this.updateSyncStatus('syncing', '连接中...');
+                
+                try {
+                    if (!this.binId) {
+                        await this.createOrFetchBin();
+                    }
+                    await this.syncFromServer();
+                    this.updateSyncStatus('synced', '已同步');
+                    
+                    // 每30秒自动同步一次
+                    this.syncInterval = setInterval(() => this.syncFromServer(), 30000);
+                } catch (e) {
+                    console.error('连接失败:', e);
+                    this.updateSyncStatus('unsynced', '离线模式');
+                }
+            }
+
+            updateSyncStatus(status, text) {
+                const dot = document.getElementById('syncDot');
+                const textEl = document.getElementById('syncText');
+                dot.className = 'sync-dot ' + status;
+                textEl.textContent = text;
+            }
+
+            async createOrFetchBin() {
+                // 尝试通过名称查找已存在的 bin
+                const bins = await this.listBins();
+                const existing = bins.find(b => b.name === this.roomId);
+                
+                if (existing) {
+                    this.binId = existing.id;
+                    localStorage.setItem('clickBinId', this.binId);
+                } else {
+                    // 创建新 bin
+                    const response = await fetch(`${API_BASE}/b`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': API_KEY,
+                            'X-Bin-Name': this.roomId,
+                            'X-Bin-Private': 'true'
+                        },
+                        body: JSON.stringify(this.data)
+                    });
+                    
+                    if (!response.ok) throw new Error('创建失败');
+                    const result = await response.json();
+                    this.binId = result.metadata.id;
+                    localStorage.setItem('clickBinId', this.binId);
+                }
+            }
+
+            async listBins() {
+                const response = await fetch(`${API_BASE}/b`, {
+                    headers: { 'X-Master-Key': API_KEY }
+                });
+                if (!response.ok) return [];
+                const result = await response.json();
+                return result.bins || [];
+            }
+
+            async syncFromServer() {
+                if (!this.binId) return;
+                
+                try {
+                    const response = await fetch(`${API_BASE}/b/${this.binId}/latest`, {
+                        headers: { 'X-Master-Key': API_KEY }
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        const serverData = result.record;
+                        
+                        // 合并数据（本地和服务器取最大值）
+                        this.mergeData(serverData);
+                        this.saveData();
+                        this.updateTodayCount();
+                        this.updateSyncStatus('synced', '已同步');
+                    }
+                } catch (e) {
+                    console.error('同步失败:', e);
+                }
+            }
+
+            mergeData(serverData) {
+                if (!serverData || !serverData.clicks) return;
+                
+                for (const date in serverData.clicks) {
+                    if (!this.data.clicks[date]) {
+                        this.data.clicks[date] = serverData.clicks[date];
+                    } else {
+                        // 合并每小时数据
+                        const serverHours = serverData.clicks[date].hours || {};
+                        const localHours = this.data.clicks[date].hours || {};
+                        
+                        for (const hour in serverHours) {
+                            if (!localHours[hour] || serverHours[hour] > localHours[hour]) {
+                                localHours[hour] = serverHours[hour];
+                            }
+                        }
+                        
+                        // 取总数最大值
+                        this.data.clicks[date].total = Math.max(
+                            this.data.clicks[date].total,
+                            serverData.clicks[date].total
+                        );
+                    }
+                }
+            }
+
+            async syncToServer() {
+                if (!this.binId) return;
+                
+                this.updateSyncStatus('syncing', '同步中...');
+                
+                try {
+                    const response = await fetch(`${API_BASE}/b/${this.binId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': API_KEY
+                        },
+                        body: JSON.stringify(this.data)
+                    });
+                    
+                    if (response.ok) {
+                        this.updateSyncStatus('synced', '已同步');
+                    } else {
+                        throw new Error('同步失败');
+                    }
+                } catch (e) {
+                    console.error('同步失败:', e);
+                    this.updateSyncStatus('unsynced', '同步失败');
+                }
+            }
+
+            // ==================== 点击记录 ====================
+            recordClick(touchX = null, touchY = null) {
+                const now = new Date();
+                const dateStr = this.getDateString(now);
+                const hourStr = this.getHourString(now);
+                const weekStr = this.getWeekString(now);
+                const monthStr = this.getMonthString(now);
+                const yearStr = this.getYearString(now);
+
+                if (!this.data.clicks[dateStr]) {
+                    this.data.clicks[dateStr] = { total: 0, hours: {}, week: weekStr, month: monthStr, year: yearStr };
+                }
+
+                this.data.clicks[dateStr].total++;
+                
+                if (!this.data.clicks[dateStr].hours[hourStr]) {
+                    this.data.clicks[dateStr].hours[hourStr] = 0;
+                }
+                this.data.clicks[dateStr].hours[hourStr]++;
+
+                this.data.lastDate = dateStr;
+                this.saveData();
+                this.updateTodayCount();
+                this.addRippleEffect(touchX, touchY);
+                this.addColorSwitchEffect();
+                this.addTouchFeedback();
+                
+                // 自动同步到服务器
+                this.syncToServer();
+            }
+
+            updateTodayCount() {
+                const today = this.getDateString();
+                const count = this.data.clicks[today]?.total || 0;
+                document.getElementById('todayCount').textContent = count;
+            }
+
+            addRippleEffect(touchX = null, touchY = null) {
+                const button = document.getElementById('mainButton');
+                const ripple = document.createElement('div');
+                ripple.className = 'ripple';
+                const waterRipple = document.createElement('div');
+                waterRipple.className = 'water-ripple';
+                
+                if (touchX !== null && touchY !== null) {
+                    ripple.style.left = touchX + 'px';
+                    ripple.style.top = touchY + 'px';
+                    waterRipple.style.left = touchX + 'px';
+                    waterRipple.style.top = touchY + 'px';
+                } else {
+                    const randomX = Math.random() * button.offsetWidth;
+                    const randomY = Math.random() * button.offsetHeight;
+                    ripple.style.left = randomX + 'px';
+                    ripple.style.top = randomY + 'px';
+                    waterRipple.style.left = randomX + 'px';
+                    waterRipple.style.top = randomY + 'px';
+                }
+                
+                button.appendChild(ripple);
+                button.appendChild(waterRipple);
+                setTimeout(() => ripple.remove(), 800);
+                setTimeout(() => waterRipple.remove(), 1000);
+            }
+
+            addColorSwitchEffect() {
+                const button = document.getElementById('mainButton');
+                button.classList.add('click-green');
+                setTimeout(() => button.classList.remove('click-green'), 300);
+            }
+
+            addTouchFeedback() {
+                const button = document.getElementById('mainButton');
+                button.classList.add('touch-active');
+                setTimeout(() => button.classList.remove('touch-active'), 100);
+            }
+
+            startNewDayCheck() {
+                setInterval(() => {
+                    if (this.getDateString() !== this.data.lastDate) {
+                        this.updateTodayCount();
+                    }
+                }, 60000);
+            }
+
+            startTimer() {
+                setInterval(() => this.updateTimer(), 1000);
+            }
+
+            updateTimer() {
+                const elapsed = Date.now() - this.startTime;
+                const h = Math.floor(elapsed / 3600000);
+                const m = Math.floor((elapsed % 3600000) / 60000);
+                const s = Math.floor((elapsed % 60000) / 1000);
+                document.getElementById('timer').textContent = 
+                    h.toString().padStart(2, '0') + ':' +
+                    m.toString().padStart(2, '0') + ':' +
+                    s.toString().padStart(2, '0');
+            }
+
+            // ==================== 统计分析 ====================
+            getHourlyData() {
+                const data = [], labels = [], now = new Date();
+                for (let i = 23; i >= 0; i--) {
+                    const hour = new Date(now.getTime() - i * 60 * 60 * 1000);
+                    const bjTime = this.getBeijingTime(hour);
+                    const hourStr = this.getHourString(hour);
+                    const dateStr = this.getDateString(hour);
+                    let count = 0;
+                    if (this.data.clicks[dateStr]?.hours[hourStr]) {
+                        count = this.data.clicks[dateStr].hours[hourStr];
+                    }
+                    data.push(count);
+                    labels.push(bjTime.getHours() + ':00');
+                }
+                return { labels, data };
+            }
+
+            getDailyData() {
+                const data = [], labels = [], now = new Date();
+                for (let i = 6; i >= 0; i--) {
+                    const day = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+                    const bjTime = this.getBeijingTime(day);
+                    const dateStr = this.getDateString(day);
+                    data.push(this.data.clicks[dateStr]?.total || 0);
+                    labels.push((bjTime.getMonth() + 1) + '/' + bjTime.getDate());
+                }
+                return { labels, data };
+            }
+
+            getWeeklyData() {
+                const weeklyData = {}, now = new Date();
+                for (let i = 6; i >= 0; i--) {
+                    const day = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+                    const dateStr = this.getDateString(day);
+                    if (this.data.clicks[dateStr]) {
+                        const weekStr = this.data.clicks[dateStr].week;
+                        weeklyData[weekStr] = (weeklyData[weekStr] || 0) + this.data.clicks[dateStr].total;
+                    }
+                }
+                const labels = Object.keys(weeklyData).reverse();
+                return { labels, data: labels.map(l => weeklyData[l]) };
+            }
+
+            getMonthlyData() {
+                const monthlyData = {}, now = new Date();
+                for (let i = 6; i >= 0; i--) {
+                    const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    monthlyData[this.getMonthString(month)] = 0;
+                }
+                Object.values(this.data.clicks).forEach(day => {
+                    if (monthlyData.hasOwnProperty(day.month)) {
+                        monthlyData[day.month] += day.total;
+                    }
+                });
+                const labels = Object.keys(monthlyData);
+                return { labels, data: labels.map(l => monthlyData[l]) };
+            }
+
+            getYearlyData() {
+                const yearlyData = {}, now = new Date();
+                for (let i = 99; i >= 0; i--) {
+                    yearlyData[(now.getFullYear() - i).toString()] = 0;
+                }
+                Object.values(this.data.clicks).forEach(day => {
+                    if (yearlyData.hasOwnProperty(day.year)) {
+                        yearlyData[day.year] += day.total;
+                    }
+                });
+                const labels = Object.keys(yearlyData);
+                return { labels, data: labels.map(l => yearlyData[l]) };
+            }
+
+            getStatistics() {
+                const total = Object.values(this.data.clicks).reduce((sum, day) => sum + day.total, 0);
+                const days = Object.keys(this.data.clicks).length;
+                const dataStr = JSON.stringify(this.data);
+                const kb = (new Blob([dataStr]).size / 1024).toFixed(2);
+                return { total, avgDaily: days > 0 ? Math.round(total / days) : 0, maxDaily: Math.max(0, ...Object.values(this.data.clicks).map(d => d.total)), recordDays: days, dataSize: kb + ' KB' };
+            }
+
+            showAnalysis() {
+                document.getElementById('analyzeModal').style.display = 'block';
+                const stats = this.getStatistics();
+                document.getElementById('totalClicks').textContent = stats.total.toLocaleString();
+                document.getElementById('avgDaily').textContent = stats.avgDaily.toLocaleString();
+                document.getElementById('maxDaily').textContent = stats.maxDaily.toLocaleString();
+                document.getElementById('recordDays').textContent = stats.recordDays;
+                document.getElementById('dataSize').textContent = stats.dataSize;
+                this.createCharts();
+            }
+
+            createCharts() {
+                this.destroyCharts();
+                const chartOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } };
+                
+                const hourlyData = this.getHourlyData();
+                this.charts.hourly = new Chart(document.getElementById('hourlyChart'), { type: 'bar', data: { labels: hourlyData.labels, datasets: [{ data: hourlyData.data, backgroundColor: 'rgba(255,99,132,0.6)', borderColor: 'rgba(255,99,132,1)', borderWidth: 1 }] }, options: chartOptions });
+
+                const dailyData = this.getDailyData();
+                this.charts.daily = new Chart(document.getElementById('dailyChart'), { type: 'bar', data: { labels: dailyData.labels, datasets: [{ data: dailyData.data, backgroundColor: 'rgba(54,162,235,0.6)', borderColor: 'rgba(54,162,235,1)', borderWidth: 1 }] }, options: chartOptions });
+
+                const weeklyData = this.getWeeklyData();
+                this.charts.weekly = new Chart(document.getElementById('weeklyChart'), { type: 'bar', data: { labels: weeklyData.labels, datasets: [{ data: weeklyData.data, backgroundColor: 'rgba(255,206,86,0.6)', borderColor: 'rgba(255,206,86,1)', borderWidth: 1 }] }, options: chartOptions });
+
+                const monthlyData = this.getMonthlyData();
+                this.charts.monthly = new Chart(document.getElementById('monthlyChart'), { type: 'bar', data: { labels: monthlyData.labels, datasets: [{ data: monthlyData.data, backgroundColor: 'rgba(75,192,192,0.6)', borderColor: 'rgba(75,192,192,1)', borderWidth: 1 }] }, options: chartOptions });
+
+                const yearlyData = this.getYearlyData();
+                this.charts.yearly = new Chart(document.getElementById('yearlyChart'), { type: 'bar', data: { labels: yearlyData.labels, datasets: [{ data: yearlyData.data, backgroundColor: 'rgba(153,102,255,0.6)', borderColor: 'rgba(153,102,255,1)', borderWidth: 1 }] }, options: { ...chartOptions, scales: { ...chartOptions.scales, x: { ticks: { maxRotation: 45, minRotation: 45 } } } } });
+            }
+
+            destroyCharts() {
+                Object.values(this.charts).forEach(c => c?.destroy());
+                this.charts = {};
+            }
+
+            exportData() {
+                const blob = new Blob([JSON.stringify({ version: '1.0', exportDate: new Date().toISOString(), data: this.data }, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `click-tracker-${this.roomId}-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            }
+
+            clearData() {
+                if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+                    localStorage.removeItem('clickTrackerData');
+                    this.data = this.loadLocalData();
+                    this.updateTodayCount();
+                    this.destroyCharts();
+                    this.syncToServer();
+                    alert('数据已清空！');
+                }
+            }
+
+            // ==================== 登录相关 ====================
+            login(roomId, password) {
+                if (!roomId || !password) {
+                    alert('请输入房间号和密码');
+                    return;
+                }
+                
+                this.roomId = roomId;
+                this.password = password;
+                localStorage.setItem('clickRoomId', roomId);
+                localStorage.setItem('clickPassword', password);
+                localStorage.removeItem('clickBinId'); // 清除旧的 bin ID
+                this.binId = null;
+                
+                this.init();
+            }
+
+            logout() {
+                if (this.syncInterval) clearInterval(this.syncInterval);
+                localStorage.removeItem('clickRoomId');
+                localStorage.removeItem('clickPassword');
+                localStorage.removeItem('clickBinId');
+                location.reload();
+            }
+
+            bindEvents() {
+                const mainButton = document.getElementById('mainButton');
+                
+                mainButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const rect = mainButton.getBoundingClientRect();
+                    this.recordClick(touch.clientX - rect.left, touch.clientY - rect.top);
+                });
+                
+                mainButton.addEventListener('click', (e) => {
+                    if (!('ontouchstart' in window)) {
+                        const rect = mainButton.getBoundingClientRect();
+                        this.recordClick(e.clientX - rect.left, e.clientY - rect.top);
+                    }
+                });
+
+                document.getElementById('analyzeButton').addEventListener('click', () => this.showAnalysis());
+                document.getElementById('closeAnalyze').addEventListener('click', () => { document.getElementById('analyzeModal').style.display = 'none'; this.destroyCharts(); });
+                document.getElementById('syncButton').addEventListener('click', () => this.syncToServer());
+                document.getElementById('logoutButton').addEventListener('click', () => this.logout());
+                document.getElementById('modalExportButton').addEventListener('click', () => this.exportData());
+                document.getElementById('clearDataButton').addEventListener('click', () => this.clearData());
+
+                document.getElementById('loginButton').addEventListener('click', () => {
+                    this.login(document.getElementById('roomInput').value, document.getElementById('passwordInput').value);
+                });
+                
+                document.getElementById('roomInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') document.getElementById('passwordInput').focus();
+                });
+                document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.login(document.getElementById('roomInput').value, document.getElementById('passwordInput').value);
+                });
+
+                window.addEventListener('click', (e) => {
+                    if (e.target.id === 'analyzeModal') {
+                        document.getElementById('analyzeModal').style.display = 'none';
+                        this.destroyCharts();
+                    }
+                });
+            }
+        }
+
+        const tracker = new CloudClickTracker();
+    </script>
+</body>
+</html>
