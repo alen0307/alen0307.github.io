@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>健康记录器·点击修复最终版</title>
+<style>
+/* 与上一版样式相同，仅新增 .click-mask */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:linear-gradient(135deg,#e0f7fa 0%,#bbdefb 100%);color:#2c3e50;padding:8px}
+.container{max-width:900px;margin:0 auto;background:rgba(255,255,255,.85);border-radius:8px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.header{padding:12px 16px;background:linear-gradient(135deg,#43cea2 0%,#185a9d 100%);color:#fff}.header h1{font-size:18px;margin-bottom:4px}
+.nav-buttons{display:flex;gap:6px;flex-wrap:wrap}.nav-btn{padding:6px 10px;border:0;border-radius:4px;font-size:12px;color:#fff;cursor:pointer;transition:all .2s}
+.nav-btn.food{background:#ff9a9e}.nav-btn.sleep{background:#a1c4fd}.nav-btn.exercise{background:#ffecd2;color:#333}.nav-btn.body{background:#84fab0}.nav-btn.active{transform:scale(.95);opacity:.9}
+.content{padding:10px}.form-section{display:none}.form-section.active{display:block}
+.form-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.form-row .form-group{flex:1;min-width:140px}
+label{font-size:12px;font-weight:600;margin-bottom:3px;display:block}input,select,textarea{width:100%;padding:5px 6px;border:1px solid #cfd8dc;border-radius:4px;font-size:12px}
+input:focus,select:focus,textarea:focus{border-color:#43cea2;outline:0}textarea{resize:vertical;min-height:40px}
+.btn-save{margin:8px auto 0;display:block;padding:6px 14px;border:0;border-radius:4px;font-size:12px;font-weight:600;color:#fff;background:linear-gradient(135deg,#43cea2 0%,#185a9d 100%);cursor:pointer}
+.records-section{margin-top:10px;border-top:1px solid rgba(0,0,0,.05);padding-top:8px}
+.records-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;position:relative}
+.btn-import,.btn-export{padding:4px 8px;border:0;border-radius:3px;font-size:11px;color:#fff;cursor:pointer}.btn-import{background:#5d69be}.btn-export{background:#ff9a9e}
+.records-list{display:grid;gap:6px}.record-item{padding:8px;border-radius:4px;border-left:3px solid;background:rgba(255,255,255,.7);cursor:pointer;position:relative}
+.record-item.food{border-left-color:#ff9a9e}.record-item.sleep{border-left-color:#a1c4fd}.record-item.exercise{border-left-color:#ffecd2}.record-item.body{border-left-color:#84fab0}
+.record-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:12px;position:relative}
+.click-mask{position:absolute;inset:0;z-index:1;cursor:pointer}
+.record-type{font-weight:600;position:relative;z-index:2}.record-time{color:#7f8c8d;font-size:11px;position:relative;z-index:2}
+.record-details{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:4px;font-size:11px}.record-detail{background:rgba(255,255,255,.6);padding:3px 5px;border-radius:3px}
+.record-note{font-size:11px;margin-top:4px;padding:3px 5px;background:rgba(255,255,255,.6);border-radius:3px;font-style:italic}
+.delete-btn{position:absolute;top:4px;right:4px;padding:2px 6px;font-size:10px;border:0;border-radius:3px;background:#ff6b6b;color:#fff;cursor:pointer;line-height:1;z-index:2}
+.edit-form{display:none;margin-top:6px}.edit-form.active{display:block}.edit-form input,.edit-form select,.edit-form textarea{font-size:11px;padding:3px 4px}
+.edit-actions{display:flex;gap:6px;margin-top:6px}.edit-actions button{flex:1;padding:4px;border:0;border-radius:3px;font-size:11px;cursor:pointer}.edit-actions .save{background:#43cea2;color:#fff}.edit-actions .cancel{background:#b0b0b0;color:#fff}
+.file-input{display:none}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;display:none}.modal-content{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:16px;border-radius:6px;width:90%;max-width:300px;text-align:center;font-size:13px}.modal-buttons{display:flex;gap:8px;margin-top:10px}.modal-buttons button{flex:1;padding:6px;border:0;border-radius:3px;font-size:12px;cursor:pointer}.modal-buttons .confirm{background:#43cea2;color:#fff}.modal-buttons .cancel{background:#b0b0b0;color:#fff}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🏥 健康记录器（点击修复最终版）</h1>
+    <div class="nav-buttons">
+      <button class="nav-btn food active" onclick="showSec('food')">🍎 饮食</button>
+      <button class="nav-btn sleep" onclick="showSec('sleep')">😴 睡眠</button>
+      <button class="nav-btn exercise" onclick="showSec('exercise')">🏃 运动</button>
+      <button class="nav-btn body" onclick="showSec('body')">🫀 身体</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- 饮食 -->
+    <div id="food-sec" class="form-section active">
+      <div class="form-row">
+        <div class="form-group"><label>进食时间</label><input type="datetime-local" id="food-time" required></div>
+        <div class="form-group"><label>食物类型</label>
+          <select id="food-type" required><option value="">选类型</option><option>主食</option><option>蔬菜</option><option>水果</option><option>肉类</option><option>乳制品</option><option>零食</option><option>饮料</option><option>其他</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>分量</label><input id="food-amount" placeholder="例：一碗米饭" required></div>
+        <div class="form-group"><label>身体感觉</label>
+          <select id="food-feeling" required><option value="">选感觉</option><option>很好</option><option>良好</option><option>一般</option><option>不适</option><option>很不舒服</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea id="food-note" rows="2"></textarea></div>
+      <button class="btn-save" onclick="saveRec('food')">保存饮食</button>
+    </div>
+
+    <!-- 睡眠 -->
+    <div id="sleep-sec" class="form-section">
+      <div class="form-row">
+        <div class="form-group"><label>入睡时间</label><input type="datetime-local" id="sleep-time" onchange="calcSlDur()"></div>
+        <div class="form-group"><label>醒来时间</label><input type="datetime-local" id="wake-time" onchange="calcSlDur()"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>睡眠时长(h)</label><input id="sleep-duration" readonly></div>
+        <div class="form-group"><label>睡眠质量</label>
+          <select id="sleep-quality"><option value="">选质量</option><option>很好</option><option>良好</option><option>一般</option><option>较差</option><option>很差</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea id="sleep-note" rows="2"></textarea></div>
+      <button class="btn-save" onclick="saveRec('sleep')">保存睡眠</button>
+    </div>
+
+    <!-- 运动 -->
+    <div id="exercise-sec" class="form-section">
+      <div class="form-row">
+        <div class="form-group"><label>运动时间</label><input type="datetime-local" id="exercise-time"></div>
+        <div class="form-group"><label>时长(min)</label><input type="number" id="exercise-duration" min="0" max="1440"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>运动类型</label>
+          <select id="exercise-type"><option value="">选类型</option><option>跑步</option><option>散步</option><option>游泳</option><option>骑行</option><option>健身</option><option>瑜伽</option><option>球类运动</option><option>其他</option></select>
+        </div>
+        <div class="form-group"><label>强度</label>
+          <select id="exercise-intensity"><option value="">选强度</option><option>低强度</option><option>中等强度</option><option>高强度</option><option>极高强度</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label>步数（可选）</label><input type="number" id="exercise-steps" min="0" placeholder="步数"></div>
+      <div class="form-group"><label>备注</label><textarea id="exercise-note" rows="2"></textarea></div>
+      <button class="btn-save" onclick="saveRec('exercise')">保存运动</button>
+    </div>
+
+    <!-- 身体 -->
+    <div id="body-sec" class="form-section">
+      <div class="score-container" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;font-size:12px">
+        <div class="score-item"><label>头部0-10</label><input type="range" id="head-score" min="0" max="10" value="8" oninput="upScore('head')"><div id="head-display">8分</div></div>
+        <div class="score-item"><label>胸部0-10</label><input type="range" id="chest-score" min="0" max="10" value="8" oninput="upScore('chest')"><div id="chest-display">8分</div></div>
+        <div class="score-item"><label>腹部0-10</label><input type="range" id="abdomen-score" min="0" max="10" value="8" oninput="upScore('abdomen')"><div id="abdomen-display">8分</div></div>
+        <div class="score-item"><label>四肢0-10</label><input type="range" id="limbs-score" min="0" max="10" value="8" oninput="upScore('limbs')"><div id="limbs-display">8分</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>记录时间</label><input type="datetime-local" id="body-time"></div>
+        <div class="form-group"><label>总体评分</label><input id="body-total" readonly></div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea id="body-note" rows="2"></textarea></div>
+      <button class="btn-save" onclick="saveRec('body')">保存状态</button>
+    </div>
+
+    <!-- 记录列表 -->
+    <div class="records-section">
+      <div class="records-header">
+        <div style="font-size:13px;font-weight:600">📋 历史记录</div>
+        <div class="btn-group"><button class="btn-import" onclick="importData()">📥 导入</button><button class="btn-export" onclick="exportData()">📤 导出</button></div>
+      </div>
+      <input type="file" id="file-input" class="file-input" accept=".json" onchange="handleFileImport(event)">
+      <div id="records-list" class="records-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 确认模态 -->
+<div id="confirm-modal" class="modal"><div class="modal-content"><div id="confirm-message"></div><div class="modal-buttons"><button class="confirm" onclick="confirmYes()">确定</button><button class="cancel" onclick="closeModal()">取消</button></div></div></div>
+
+<script>
+/* ===== 工具 ===== */
+const $=id=>document.getElementById(id);
+const fmtDate=d=>new Date(d).toLocaleString('zh-CN');
+const msg=txt=>{
+  const m=document.createElement('div');m.style.cssText='position:fixed;top:10px;right:10px;background:#43cea2;color:#fff;padding:6px 10px;border-radius:4px;font-size:12px;z-index:2000';
+  m.textContent=txt;document.body.appendChild(m);setTimeout(()=>m.remove(),1500);
+};
+/* ===== 时区 ===== */
+const tz8=d=>new Date(d.getTime()+8*3600e3).toISOString().slice(0,16);
+const now8=()=>tz8(new Date);
+
+/* ===== 数据 ===== */
+let records=JSON.parse(localStorage.getItem('healthRecords')||'[]');
+let curSec='food';
+let confirmCb=null;
+
+/* ===== 导航 ===== */
+function showSec(sec){
+  document.querySelectorAll('.form-section').forEach(s=>s.classList.remove('active'));
+  $(sec+'-sec').classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.nav-btn.'+sec).classList.add('active');
+  curSec=sec;
+}
+
+/* ===== 评分 ===== */
+function upScore(p){
+  const v=$(p+'-score').value,d=$(p+'-display');
+  d.textContent=v+'分';
+  if(v<=3)d.style.color='#e74c3c';else if(v>=8)d.style.color='#27ae60';else d.style.color='#f39c12';
+  calcTotal();
+}
+function calcTotal(){
+  const avg=(['head','chest','abdomen','limbs'].reduce((s,p)=>s+parseInt($(p+'-score').value),0)/4).toFixed(1);
+  $('body-total').value=avg+'分';
+}
+function calcSlDur(){
+  const s=$('sleep-time').value,w=$('wake-time').value;
+  if(s&&w&&new Date(w)>new Date(s)){
+    const dr=((new Date(w)-new Date(s))/3600000).toFixed(1);
+    $('sleep-duration').value=dr;
+  }
+}
+
+/* ===== 保存新记录 ===== */
+function saveRec(type){
+  try{
+    const rec={id:Date.now(),type,timestamp:new Date().toISOString()};
+    switch(type){
+      case 'food':Object.assign(rec,{time:$('food-time').value,foodType:$('food-type').value,amount:$('food-amount').value,feeling:$('food-feeling').value,note:$('food-note').value});break;
+      case 'sleep':Object.assign(rec,{sleepTime:$('sleep-time').value,wakeTime:$('wake-time').value,duration:parseFloat($('sleep-duration').value),quality:$('sleep-quality').value,note:$('sleep-note').value});break;
+      case 'exercise':Object.assign(rec,{time:$('exercise-time').value,duration:parseInt($('exercise-duration').value),exerciseType:$('exercise-type').value,intensity:$('exercise-intensity').value,steps:parseInt($('exercise-steps').value)||0,note:$('exercise-note').value});break;
+      case 'body':Object.assign(rec,{time:$('body-time').value,headScore:parseInt($('head-score').value),chestScore:parseInt($('chest-score').value),abdomenScore:parseInt($('abdomen-score').value),limbsScore:parseInt($('limbs-score').value),totalScore:parseFloat($('body-total').value),note:$('body-note').value});break;
+    }
+    if(!(rec.time || (rec.sleepTime && rec.wakeTime))) throw new Error('时间必填');
+    records.unshift(rec);localStorage.setItem('healthRecords',JSON.stringify(records));
+    msg('已保存');showList();resetForm(type);
+  }catch(e){alert(e.message)}
+}
+function resetForm(type){
+  switch(type){
+    case 'food':$('food-type').value='';$('food-amount').value='';$('food-feeling').value='';$('food-note').value='';break;
+    case 'sleep':$('sleep-quality').value='';$('sleep-note').value='';break;
+    case 'exercise':$('exercise-duration').value='';$('exercise-type').value='';$('exercise-intensity').value='';$('exercise-steps').value='';$('exercise-note').value='';break;
+    case 'body':['head','chest','abdomen','limbs'].forEach(p=>$(p+'-score').value=8);calcTotal();break;
+  }
+  setDefTime();
+}
+function setDefTime(){
+  ['food-time','sleep-time','exercise-time','body-time'].forEach(id=>{if($(id))$(id).value=now8();});
+  if($('sleep-time'))$('sleep-time').value=now8();
+  if($('wake-time'))$('wake-time').value=now8();
+}
+
+/* ===== 列表 / 编辑 ===== */
+function showList(){
+  const lst=$('records-list');
+  if(!records.length){lst.innerHTML='<div style="text-align:center;color:#999;padding:10px;font-size:12px">暂无记录</div>';return}
+  lst.innerHTML='';
+  records.forEach(r=>{
+    const div=document.createElement('div');div.className=`record-item ${r.type}`;
+    div.innerHTML=renderItem(r)+renderEditForm(r);
+    lst.appendChild(div);
+  });
+}
+function renderItem(r){
+  let det='',icon='';
+  switch(r.type){
+    case 'food':icon='🍎';det=`<div class="record-detail">⏰ ${r.time}</div><div class="record-detail">🥗 ${r.foodType}</div><div class="record-detail">⚖️ ${r.amount}</div><div class="record-detail">😊 ${r.feeling}</div>`;break;
+    case 'sleep':icon='😴';det=`<div class="record-detail">🌙 ${r.sleepTime}</div><div class="record-detail">☀️ ${r.wakeTime}</div><div class="record-detail">⏱️ ${r.duration}h</div><div class="record-detail">⭐ ${r.quality}</div>`;break;
+    case 'exercise':icon='🏃';det=`<div class="record-detail">⏰ ${r.time}</div><div class="record-detail">⏱️ ${r.duration}min</div><div class="record-detail">🏃 ${r.exerciseType}</div><div class="record-detail">💪 ${r.intensity}</div>`;if(r.steps)det+=`<div class="record-detail">👟 ${r.steps}步</div>`;break;
+    case 'body':icon='🫀';det=`<div class="record-detail">🧠 ${r.headScore}</div><div class="record-detail">💓 ${r.chestScore}</div><div class="record-detail">🫃 ${r.abdomenScore}</div><div class="record-detail">🦵 ${r.limbsScore}</div><div class="record-detail">📊 ${r.totalScore}</div>`;break;
+  }
+  return `<div class="record-header">
+            <div class="click-mask" onclick="toggleEdit(${r.id})"></div>
+            <span class="record-type">${icon} ${{food:'饮食',sleep:'睡眠',exercise:'运动',body:'身体'}[r.type]}</span>
+            <span class="record-time">${fmtDate(r.timestamp)}</span>
+          </div>
+          <div class="record-details">${det}</div>${r.note?`<div class="record-note">📝 ${r.note}</div>`:''}
+          <button class="delete-btn" onclick="confirmDel(${r.id})">删除</button>`;
+}
+function renderEditForm(r){
+  const fid=`edit-${r.id}`;
+  let html=`<div id="${fid}" class="edit-form">`;  <!-- 不再加 stopPropagation -->
+  switch(r.type){
+    case 'food':html+=`
+      <div class="form-row">
+        <div class="form-group"><label>进食时间</label><input type="datetime-local" id="${fid}-time" value="${r.time}"></div>
+        <div class="form-group"><label>食物类型</label><select id="${fid}-foodType"><option>${r.foodType}</option><option>主食</option><option>蔬菜</option><option>水果</option><option>肉类</option><option>乳制品</option><option>零食</option><option>饮料</option><option>其他</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>分量</label><input id="${fid}-amount" value="${r.amount}"></div>
+        <div class="form-group"><label>身体感觉</label><select id="${fid}-feeling"><option>${r.feeling}</option><option>很好</option><option>良好</option><option>一般</option><option>不适</option><option>很不舒服</option></select></div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea id="${fid}-note" rows="2">${r.note||''}</textarea></div>`;break;
+    case 'sleep':html+=`
+      <div class="form-row">
+        <div class="form-group"><label>入睡</label><input type="datetime-local" id="${fid}-sleepTime" value="${r.sleepTime}"></div>
+        <div class="form-group"><label>醒来</label><input type="datetime-local" id="${fid}-wakeTime" value="${r.wakeTime}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>时长(h)</label><input id="${fid}-duration" type="number" step="0.1" value="${r.duration}"></div>
+        <div class="form-group"><label>质量</label><select id="${fid}-quality"><option>${r.quality}</option><option>很好</option><option>良好</option><option>一般</option><option>较差</option><option>很差</option></select></div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea id="${fid}-note" rows="2">${r.note||''}</textarea></div>`;break;
+    case 'exercise':html+=`
+      <div class="form-row">
+        <div class="form-group"><label>运动时间</label><input type="datetime-local" id="${fid}-time" value="${r.time}"></div>
+        <div class="form-group"><label>时长(min)</label><input type="number" id="${fid}-duration" min="0" value="${r.duration}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>类型</label><select id="${fid}-exerciseType"><option>${r.exerciseType}</option><option>跑步</option><option>散步</option><option>游泳</option><option>骑行</option><option>健身</option><option>瑜伽</option><option>球类运动</option><option>其他</option></select></div>
+        <div class="form-group"><label>强度</label><select id="${fid}-intensity"><option>${r.intensity}</option><option>低强度</option><option>中等强度</option><option>高强度</option><option>极高强度</option></select></div>
+      </div>
+      <div class="form-group"><label>步数</label><input type="number" id="${fid}-steps" min="0" value="${r.steps}"></div>
+      <div class="form-group"><label>备注</label><textarea id="${fid}-note" rows="2">${r.note||''}</textarea></div>`;break;
+    case 'body':html+=`
+      <div class="score-container" style="grid-template-columns:repeat(2,1fr);gap:6px;font-size:11px">
+        <div class="score-item"><label>头部</label><input type="range" id="${fid}-headScore" min="0" max="10" value="${r.headScore}" oninput="upEditScore('${fid}','headScore')"><div id="${fid}-headScore-display">${r.headScore}分</div></div>
+        <div class="score-item"><label>胸部</label><input type="range" id="${fid}-chestScore" min="0" max="10" value="${r.chestScore}" oninput="upEditScore('${fid}','chestScore')"><div id="${fid}-chestScore-display">${r.chestScore}分</div></div>
+        <div class="score-item"><label>腹部</label><input type="range" id="${fid}-abdomenScore" min="0" max="10" value="${r.abdomenScore}" oninput="upEditScore('${fid}','abdomenScore')"><div id="${fid}-abdomenScore-display">${r.abdomenScore}分</div></div>
+        <div class="score-item"><label>四肢</label><input type="range" id="${fid}-limbsScore" min="0" max="10" value="${r.limbsScore}" oninput="upEditScore('${fid}','limbsScore')"><div id="${fid}-limbsScore-display">${r.limbsScore}分</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>记录时间</label><input type="datetime-local" id="${fid}-time" value="${r.time}"></div>
+        <div class="form-group"><label>总体</label><input id="${fid}-total" readonly value="${r.totalScore}"></div>
+      </div>
+      <div class="form-group"><label>备注</label><textarea id="${fid}-note" rows="2">${r.note||''}</textarea></div>`;break;
+  }
+  html+=`<div class="edit-actions"><button class="save" onclick="saveEdit(${r.id})">保存</button><button class="cancel" onclick="cancelEdit(${r.id})">取消</button></div></div>`;
+  return html;
+}
+
+// 添加这个函数来切换编辑模式
+function toggleEdit(id) {
+    const editForm = $(`edit-${id}`);
+    if (editForm.classList.contains('active')) {
+        // 如果编辑表单当前是显示的，则隐藏它
+        editForm.classList.remove('active');
+    } else {
+        // 如果编辑表单当前是隐藏的，则隐藏所有其他编辑表单，然后显示这个
+        document.querySelectorAll('.edit-form').forEach(form => form.classList.remove('active'));
+        editForm.classList.add('active');
+    }
+}
+function saveEdit(id){
+  const idx=records.findIndex(r=>r.id===id);
+  if(idx===-1)return;
+  const r=records[idx],fid=`edit-${id}`;
+  switch(r.type){
+    case 'food':Object.assign(r,{time:$(fid+'-time').value,foodType:$(fid+'-foodType').value,amount:$(fid+'-amount').value,feeling:$(fid+'-feeling').value,note:$(fid+'-note').value});break;
+    case 'sleep':Object.assign(r,{sleepTime:$(fid+'-sleepTime').value,wakeTime:$(fid+'-wakeTime').value,duration:parseFloat($(fid+'-duration').value),quality:$(fid+'-quality').value,note:$(fid+'-note').value});break;
+    case 'exercise':Object.assign(r,{time:$(fid+'-time').value,duration:parseInt($(fid+'-duration').value),exerciseType:$(fid+'-exerciseType').value,intensity:$(fid+'-intensity').value,steps:parseInt($(fid+'-steps').value)||0,note:$(fid+'-note').value});break;
+    case 'body':Object.assign(r,{time:$(fid+'-time').value,headScore:parseInt($(fid+'-headScore').value),chestScore:parseInt($(fid+'-chestScore').value),abdomenScore:parseInt($(fid+'-abdomenScore').value),limbsScore:parseInt($(fid+'-limbsScore').value),totalScore:parseFloat($(fid+'-total').value),note:$(fid+'-note').value});break;
+  }
+  r.timestamp=new Date().toISOString();
+  localStorage.setItem('healthRecords',JSON.stringify(records));
+  msg('已更新');showList();
+}
+function cancelEdit(id){$(`edit-${id}`).classList.remove('active');}
+function upEditScore(fid,p){
+  const v=$(fid+'-'+p).value,d=$(fid+'-'+p+'-display');
+  d.textContent=v+'分';
+  const avg=(['headScore','chestScore','abdomenScore','limbsScore'].reduce((s,x)=>s+parseInt($(fid+'-'+x).value),0)/4).toFixed(1);
+  $(fid+'-total').value=avg+'分';
+}
+
+/* ===== 删除 / 确认 ===== */
+function confirmDel(id){
+  showConfirm('确定删除？',()=>{records=records.filter(r=>r.id!==id);localStorage.setItem('healthRecords',JSON.stringify(records));msg('已删除');showList();});
+}
+function showConfirm(msg,cb){$('confirm-message').textContent=msg;$('confirm-modal').style.display='block';confirmCb=cb;}
+function confirmYes(){if(confirmCb)confirmCb();closeModal();}
+function closeModal(){$('confirm-modal').style.display='none';confirmCb=null;}
+
+/* ===== 导入/导出 ===== */
+function exportData(){
+  if(!records.length){alert('无数据');return;}
+  const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`健康记录_${new Date().toLocaleDateString('zh-CN')}.json`;a.click();msg('已导出');
+}
+function importData(){$('file-input').click();}
+function handleFileImport(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      const data=JSON.parse(ev.target.result);
+      if(!Array.isArray(data))throw 0;
+      const existIds=new Set(records.map(r=>r.id));
+      const merged=data.filter(r=>r.id&&!existIds.has(r.id));
+      records.unshift(...merged);
+      localStorage.setItem('healthRecords',JSON.stringify(records));
+      msg(`成功合并 ${merged.length} 条记录`);showList();
+    }catch{alert('文件格式错误')}
+  };
+  reader.readAsText(file);
+  e.target.value='';
+}
+
+/* ===== 初始化 ===== */
+document.addEventListener('DOMContentLoaded',()=>{
+  setDefTime();showList();['head','chest','abdomen','limbs'].forEach(p=>upScore(p));
+});
+</script>
+</body>
+</html>
