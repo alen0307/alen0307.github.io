@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>手机简谱钢琴 C3-F6 升降调版</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f5f5f5;-webkit-tap-highlight-color:transparent}
+#wrap{margin:0 auto;background:#fff;padding:8px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+h2{margin:8px 0;font-size:18px;text-align:center}
+.ctrl{display:flex;flex-wrap:wrap;gap:2px;margin-bottom:2px}
+.ctrl button{height:48px;font-size:16px;border:0;border-radius:2px;color:#fff;cursor:pointer}
+#play{background:#4CAF50}
+#stop{background:#f44336}
+#ins{background:#607D8B}
+#del{background:#f44336}
+#export{background:#2196F3}
+#exportHtml{background:#9C27B0}
+#import{background:#FF9800}
+.row{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:14px}
+/* 速度 & 升降调 按钮组 */
+.btn-group{display:flex;align-items:center;gap:4px}
+.btn-group button{width:32px;height:32px;border:0;border-radius:4px;background:#607D8B;color:#fff;font-size:14px;font-weight:bold}
+.btn-group button:active{background:#ff9800}
+#spdTxt,#semiTxt{min-width:28px;text-align:center;font-weight:bold;color:#ff9800}
+#st{text-align:center;margin:6px;font-size:14px;color:#555}
+#seq{background:#fafafa;border-radius:8px;padding:6px;font-size:0;max-height:40vh;overflow-y:auto}
+.item{display:inline-flex;align-items:center;margin:1px;padding:4px 6px;border-radius:6px;font-size:16px;position:relative}
+.item.cur{box-shadow:0 0 0 2px #ff9800}
+.item .num{font-size:20px;font-weight:bold}
+.item .dur{font-size:12px;margin-left:4px;opacity:.8}
+#pads button.c3{background:#2196F3;color:#fff}
+#pads button.c4{background:#4CAF50;color:#fff}
+#pads button.c5{background:#FFEB3B;color:#000}
+#pads button.c6{background:#F44336;color:#fff}
+#pads button.rest{background:#9E9E9E;color:#fff}
+/* 默认按钮色 */
+#pads button{background:#607D8B;color:#fff;border:1;border-radius:5px;cursor:pointer;min-width:47px;height:47px;font-size:18px}
+#pads button:active{background:#ff9800}
+.item{user-select:none;cursor:pointer}
+.item *{pointer-events:none}
+/* 序列条保留四色 + 休止灰 */
+.item.c3{background:#2196F3;color:#fff}
+.item.c4{background:#4CAF50;color:#fff}
+.item.c5{background:#FFEB3B;color:#000}
+.item.c6{background:#F44336;color:#fff}
+.item.rest{background:#9E9E9E;color:#fff}
+/* 默认未指定音段的条（理论上不会用到） */
+.item{background:#607D8B;color:#fff}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0">
+    <h2 style="margin:0;font-size:18px">🎹 手机简谱钢琴</h2>
+    <input id="fileName" type="text" value="文件名" style="height:28px;padding:0 6px;border:1px solid #ccc;border-radius:4px;font-size:14px;width:100px">
+  </div>
+
+  <div class="ctrl">
+    <button id="play">▶️ 播放</button>
+    <button id="stop">⏹️ 停止</button>
+    <button id="ins">➕ 插入</button>
+    <button id="del">🗑️ 删除</button>
+    <button id="export">📤 导出</button>
+    <button id="exportHtml">📄 导出Html</button>
+    <button id="import">📥 导入</button>
+
+    <!-- 速度按钮组 -->
+    <div class="row btn-group">
+      <button id="spdDn">−</button>
+      <span id="spdTxt">1.00</span>
+      <button id="spdUp">+</button>
+    </div>
+
+    <!-- 升降调按钮组 -->
+    <div class="row btn-group">
+      <button id="semiDn">♭</button>
+      <span id="semiTxt">0</span>
+      <button id="semiUp">♯</button>
+    </div>
+  </div>
+
+  <div id="pads"></div>
+  <div id="seq"></div>
+  <div id="st">就绪</div>
+</div>
+
+<script>
+/* ---------- 基础变量 + 池管理 ---------- */
+const seq=[['C4',1]], $=s=>document.querySelector(s);
+const F={C3:130.81,D3:146.83,E3:164.81,F3:174.61,G3:196.00,A3:220.00,B3:246.94,
+         C4:261.63,D4:293.66,E4:329.63,F4:349.23,G4:392.00,A4:440.00,B4:493.88,
+         C5:523.25,D5:587.33,E5:659.25,F5:698.46,G5:783.99,A5:880.00,B5:987.77,
+         C6:1046.50,D6:1174.66,E6:1318.51,F6:1396.91,G6:1567.98,A6:1760.00,B6:1975.53};
+let ctx, idx=0, play=0, spdVal=1, semi=0;
+const semiStep=2**(1/12);
+
+/* 补上缺失的池管理 */
+let timeoutPool = [];
+function clearAllTimeouts() {
+  timeoutPool.forEach(id => clearTimeout(id));
+  timeoutPool = [];
+}
+function pushTimeout(fn, delay) {
+  timeoutPool.push(setTimeout(fn, delay));
+}
+
+/* ---------- 简谱映射 ---------- */
+const pit=[
+  {n:'C3',s:'1',c:'c3'},{n:'D3',s:'2',c:'c3'},{n:'E3',s:'3',c:'c3'},{n:'F3',s:'4',c:'c3'},{n:'G3',s:'5',c:'c3'},{n:'A3',s:'6',c:'c3'},{n:'B3',s:'7',c:'c3'},
+  {n:'C4',s:'1',c:'c4'},{n:'D4',s:'2',c:'c4'},{n:'E4',s:'3',c:'c4'},{n:'F4',s:'4',c:'c4'},{n:'G4',s:'5',c:'c4'},{n:'A4',s:'6',c:'c4'},{n:'B4',s:'7',c:'c4'},
+  {n:'C5',s:'1',c:'c5'},{n:'D5',s:'2',c:'c5'},{n:'E5',s:'3',c:'c5'},{n:'F5',s:'4',c:'c5'},{n:'G5',s:'5',c:'c5'},{n:'A5',s:'6',c:'c5'},{n:'B5',s:'7',c:'c5'},
+  {n:'C6',s:'1',c:'c6'},{n:'D6',s:'2',c:'c6'},{n:'E6',s:'3',c:'c6'},{n:'F6',s:'4',c:'c6'},{n:'G6',s:'5',c:'c6'},{n:'A6',s:'6',c:'c6'}
+];
+const durMap=[
+  {show:'1/8',val:0.125},{show:'1/6',val:0.166},{show:'1/4',val:0.25},{show:'1/3',val:0.333},
+  {show:'1/2',val:0.5},{show:'3/4',val:0.75},{show:'1',val:1},{show:'5/4',val:1.25},
+  {show:'3/2',val:1.5},{show:'2',val:2},{show:'3',val:3},{show:'4',val:4},{show:'8',val:8}
+];
+
+/* ---------- 渲染 ---------- */
+function render(){
+  $('#seq').innerHTML=seq.map((n,i)=>{
+    if(n[0]==='rest') return `<div class="item rest ${i===idx?'cur':''}" data-i="${i}"><span class="num">0</span><span class="dur">${durMap.find(d=>d.val===n[1])?.show||n[1]}</span></div>`;
+    const p=pit.find(x=>x.n===n[0]);
+    return `<div class="item ${p?.c||''} ${i===idx?'cur':''}" data-i="${i}"><span class="num">${p?.s||n[0]}</span><span class="dur">${durMap.find(d=>d.val===n[1])?.show||n[1]}</span></div>`;
+  }).join('');
+}
+
+/* ---------- 升降调频率 ---------- */
+function pitchFreq(base){ return base * (semiStep ** semi); }
+
+/* ---------- 全局 master 节点 ---------- */
+let masterGain;
+function initMaster() {
+  if (!ctx) return;
+  masterGain = ctx.createGain();
+  masterGain.connect(ctx.destination);
+  masterGain.gain.value = 1;
+}
+/* ========== 拖入导入 ========== */
+// 统一解析函数，供两种入口共用
+function parseAndLoadJSON(text) {
+  try {
+    const data = JSON.parse(text);
+    if (!Array.isArray(data.seq)) throw '格式错误';
+    seq.length = 0;
+    seq.push(...data.seq);
+    idx = 0;
+    spdVal = data.spd ?? 1;
+    semi = data.semi ?? 0;
+    $('#spdTxt').textContent = spdVal.toFixed(2);
+    $('#semiTxt').textContent = semi;
+    render();
+    $('#st').textContent = '拖入导入成功';
+  } catch (err) {
+    $('#st').textContent = '拖入失败：' + err;
+  }
+}
+
+// 拖放事件绑在最外层，整个页面都能接
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(name => {
+  document.body.addEventListener(name, e => {
+    e.preventDefault();          // 必须阻止默认行为
+    e.stopPropagation();
+  });
+});
+
+// 鼠标拖入时给点视觉提示
+document.body.addEventListener('dragover', e => {
+  document.body.style.outline = '3px dashed #FF9800';
+});
+document.body.addEventListener('dragleave', () => {
+  document.body.style.outline = '';
+});
+
+// 真正放下文件时处理
+document.body.addEventListener('drop', e => {
+  document.body.style.outline = '';
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    $('#st').textContent = '仅支持 .json 文件';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => parseAndLoadJSON(ev.target.result);
+  $('#fileName').value = file.name.replace(/\.json$/i, '');
+  reader.readAsText(file);
+});
+/* ========== 拖入导入完 ========== */
+/* ---------- 钢琴音 ---------- */
+function pianoTone(baseFreq, when = 0) {
+  if (!masterGain) initMaster();
+  const freq = pitchFreq(baseFreq);
+  const now = ctx.currentTime + when;
+  [1, 2, 3].forEach(n => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = n === 1 ? 'sine' : 'triangle';
+    osc.frequency.value = freq * n;
+    // 12ms 淡入，手机更平滑
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.4 / n, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 2);
+    osc.connect(gain).connect(masterGain);
+    osc.start(now);
+    osc.stop(now + 2.1);
+  });
+  // 噪音也同步
+  const noise = ctx.createBufferSource();
+  const noiseGain = ctx.createGain();
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 0.02, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  noise.buffer = buf;
+  noiseGain.gain.setValueAtTime(0, now);
+  noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.012);
+  noiseGain.gain.exponentialRampToValueAtTime(0.00001, now + 0.02);
+  noise.connect(noiseGain).connect(masterGain);
+  noise.start(now);
+}
+
+/* ---------- 音频激活 ---------- */
+async function ensureAudio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') await ctx.resume();
+}
+
+/* ---------- 播放 ---------- */
+async function start() {
+  if (play) return;
+  await ensureAudio();
+  clearAllTimeouts();
+  play = 1;
+  $('#play').disabled = true;
+  if (idx >= seq.length) idx = 0;
+  const startTime = ctx.currentTime;
+  let nextBeat = startTime;
+  for (let i = idx; i < seq.length && play; i++) {
+    const [no, durVal] = seq[i];
+    const beat = durVal * 0.25 / spdVal;
+    if (no !== 'rest') pianoTone(F[no] || 440, nextBeat - startTime);
+    pushTimeout(() => {
+      if (!play) return;
+      idx = i;
+      render();
+    }, (nextBeat - startTime) * 1000);
+    nextBeat += beat;
+  }
+  pushTimeout(() => {
+    play = 0;
+    $('#play').disabled = false;
+    $('#st').textContent = '播放完毕';
+  }, (nextBeat - startTime) * 1000);
+}
+
+/* ---------- 停止 ---------- */
+function stop() {
+  play = 0;
+  $('#play').disabled = false;
+  $('#st').textContent = '已停止';
+  clearAllTimeouts();
+  if (masterGain) {
+    masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.001);
+    setTimeout(() => {
+      masterGain.disconnect();
+      masterGain = null;
+    }, 2);
+  }
+}
+
+/* ---------- 事件 ---------- */
+$('#wrap').addEventListener('click', e => {
+  const t = e.target, item = t.closest('.item');
+  if (item) { stop(); idx = +item.dataset.i; render(); return; }
+  if (t.id === 'play') { start(); return; }
+  if (t.id === 'stop') { stop(); return; }
+  if (t.id === 'ins') { seq.splice(idx, 0, ['rest', 1]); render(); return; }
+  if (t.id === 'del') {
+    if (seq.length <= 1) { $('#st').textContent = '至少保留一个音符'; return; }
+    seq.splice(idx, 1);
+    if (idx >= seq.length) idx = seq.length - 1;
+    render();
+    $('#st').textContent = '已删除';
+    return;
+  }
+  if (t.dataset.n) { seq[idx][0] = t.dataset.n; playOne(t.dataset.n); if (idx === seq.length - 1) { seq.push(['rest', 1]); idx++; } else idx++; render(); return; }
+  if (t.dataset.d) { seq[idx][1] = +t.dataset.d; playOne(seq[idx][0]); if (idx === seq.length - 1) { seq.push(['rest', 1]); idx++; } else idx++; render(); return; }
+});
+async function playOne(no) {
+  if (no === 'rest') return;
+  await ensureAudio();
+  pianoTone(F[no] || 440, 0);
+}
+
+/* ---------- 控制 ---------- */
+$('#spdUp').onclick  = () => { spdVal = Math.min(spdVal + 0.05, 2); $('#spdTxt').textContent = spdVal.toFixed(2); };
+$('#spdDn').onclick  = () => { spdVal = Math.max(spdVal - 0.05, 0.2); $('#spdTxt').textContent = spdVal.toFixed(2); };
+$('#semiUp').onclick = async () => { semi = Math.min(semi + 1, 15); $('#semiTxt').textContent = semi; await ensureAudio(); };
+$('#semiDn').onclick = async () => { semi = Math.max(semi - 1, -15); $('#semiTxt').textContent = semi; await ensureAudio(); };
+
+$('#export').onclick = () => {
+  if (!seq.length) { $('#st').textContent = '空序列'; return; }
+  const blob = new Blob([JSON.stringify({ seq, spd: spdVal, semi: semi }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ($('#fileName').value || '文件名') + '.json';
+  a.click();
+  $('#st').textContent = '已导出';
+};
+
+/* ==========  导出Html  ========== */
+$('#exportHtml').onclick = () => {
+  if (!seq.length) { $('#st').textContent = '空序列'; return; }
+
+  const musicData = JSON.stringify({ seq, spd: spdVal, semi: semi });
+
+  /* 模板字符串，放心写 < > " & 不会冲突 */
+  const html =`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${$('#fileName').value || '钢琴播放'}</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f5f5f5;display:flex;justify-content:center;align-items:center;height:100vh}
+#player{background:#fff;padding:30px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.15);text-align:center}
+#playBtn{width:120px;height:48px;font-size:18px;border:0;border-radius:4px;background:#4CAF50;color:#fff;cursor:pointer}
+#playBtn.playing{background:#f44336}
+</style>
+</head>
+<body>
+<div id="player">
+  <h2>${$('#fileName').value || '钢琴播放'}</h2>
+  <button id="playBtn">▶️ 播放</button>
+</div>
+<script>
+const DATA = ${musicData};
+const F = ${JSON.stringify(F)};
+const semiStep = Math.pow(2,1/12);
+
+let ctx, play = 0, idx = 0, timeoutPool = [], masterGain;
+
+const clearAllTimeouts = () => { timeoutPool.forEach(id => clearTimeout(id)); timeoutPool = []; };
+const pushTimeout = (fn, d) => timeoutPool.push(setTimeout(fn, d));
+const pitchFreq = base => base * Math.pow(semiStep, DATA.semi);
+const initMaster = () => {
+  if (!ctx) return;
+  masterGain = ctx.createGain();
+  masterGain.connect(ctx.destination);
+  masterGain.gain.value = 1;
+};
+
+const pianoTone = (baseFreq, when = 0) => {
+  if (!masterGain) initMaster();
+  const freq = pitchFreq(baseFreq);
+  const now = ctx.currentTime + when;
+  [1, 2, 3].forEach(n => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = n === 1 ? 'sine' : 'triangle';
+    osc.frequency.value = freq * n;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.4 / n, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 2);
+    osc.connect(gain).connect(masterGain);
+    osc.start(now); osc.stop(now + 2.1);
+  });
+  const noise = ctx.createBufferSource();
+  const noiseGain = ctx.createGain();
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 0.02, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  noise.buffer = buf;
+  noiseGain.gain.setValueAtTime(0, now);
+  noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.012);
+  noiseGain.gain.exponentialRampToValueAtTime(0.00001, now + 0.02);
+  noise.connect(noiseGain).connect(masterGain);
+  noise.start(now);
+};
+
+const ensureAudio = async () => {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') await ctx.resume();
+};
+
+const start = async () => {
+  if (play) return;
+  await ensureAudio();
+  clearAllTimeouts(); play = 1;
+  const btn = document.getElementById('playBtn');
+  btn.classList.add('playing'); btn.textContent = '⏸️ 暂停';
+  if (idx >= DATA.seq.length) idx = 0;
+  const startTime = ctx.currentTime;
+  let nextBeat = startTime;
+  for (let i = idx; i < DATA.seq.length && play; i++) {
+    const [no, durVal] = DATA.seq[i];
+    const beat = durVal * 0.25 / DATA.spd;
+    if (no !== 'rest') pianoTone(F[no] || 440, nextBeat - startTime);
+    pushTimeout(() => { if (play) idx = i; }, (nextBeat - startTime) * 1000);
+    nextBeat += beat;
+  }
+  pushTimeout(() => {
+    play = 0; btn.classList.remove('playing'); btn.textContent = '▶️ 播放'; idx = 0;
+  }, (nextBeat - startTime) * 1000);
+};
+
+const stop = () => {
+  play = 0;
+  const btn = document.getElementById('playBtn');
+  btn.classList.remove('playing'); btn.textContent = '▶️ 播放';
+  clearAllTimeouts();
+  if (masterGain) {
+    masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.001);
+    setTimeout(() => { masterGain.disconnect(); masterGain = null; }, 2);
+  }
+};
+
+document.getElementById('playBtn').addEventListener('click', () => play ? stop() : start());
+<` + `/script>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = ($('#fileName').value || '文件名') + '.html';
+  a.click();
+  $('#st').textContent = '已导出Html';
+};
+/* ========== 导出Html 结束 ========== */
+
+$('#import').onclick = () => {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.json';
+  inp.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!Array.isArray(data.seq)) throw '格式错误';
+        seq.length = 0;
+        seq.push(...data.seq);
+        idx = 0;
+        spdVal = data.spd || 1;
+        semi = data.semi || 0;
+        $('#spdTxt').textContent = spdVal.toFixed(2);
+        $('#semiTxt').textContent = semi;
+        render();
+        $('#st').textContent = '已导入';
+        $('#fileName').value = file.name.replace(/\.json$/i, '');
+      } catch (err) {
+        $('#st').textContent = '导入失败：' + err;
+      }
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+};
+
+/* ---------- 面板 ---------- */
+$('#pads').innerHTML = '<div>' +
+  pit.map(p => `<button class="pad ${p.c}" data-n="${p.n}">${p.s}</button>`).join('') +
+  `<button class="pad rest" data-n="rest">0</button>` +
+  durMap.map(d => `<button class="pad" data-d="${d.val}">${d.show}</button>`).join('') +
+  '</div>';
+render();
+</script>
+</body>
+</html>
