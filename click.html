@@ -377,7 +377,21 @@
         </div>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-database.js"></script>
     <script>
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
         class SimpleChart {
             constructor(canvasId) {
                 this.canvas = document.getElementById(canvasId);
@@ -461,18 +475,16 @@
 
             async loadData() {
                 try {
-                    const response = await fetch('/api/data');
-                    console.log('Response status:', response.status);
-                    if (response.ok) {
-                        const result = await response.json();
-                        console.log('Loaded data, lastDate:', result.data.lastDate);
-                        console.log('Today:', this.getDateString());
-                        this.data = result.data;
+                    const snapshot = await db.ref('clickData').once('value');
+                    const data = snapshot.val();
+                    if (data) {
+                        this.data = data;
+                        console.log('Loaded from Firebase, lastDate:', this.data.lastDate);
                     } else {
-                        throw new Error('Failed to load data');
+                        throw new Error('No data');
                     }
                 } catch (error) {
-                    console.log('No existing data, starting fresh');
+                    console.log('No data, starting fresh');
                     const now = new Date();
                     this.data = {
                         clicks: {},
@@ -484,16 +496,9 @@
 
             async saveData() {
                 try {
-                    const response = await fetch('/api/data', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(this.data)
-                    });
-                    if (!response.ok) {
-                        console.error('Save failed:', response.status);
-                    }
+                    await db.ref('clickData').set(this.data);
                 } catch (error) {
-                    console.error('Failed to save data:', error);
+                    console.error('Save failed:', error);
                 }
             }
 
